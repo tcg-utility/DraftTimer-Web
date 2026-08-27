@@ -2,15 +2,14 @@ import type { NextConfig } from 'next';
 
 const configuredBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 const basePath = configuredBasePath === '/' ? '' : configuredBasePath.replace(/\/$/, '');
+const isStaticExport = Boolean(basePath);
 
 const nextConfig: NextConfig = {
-  output: 'export',
-  trailingSlash: true,
+  output: isStaticExport ? 'export' : undefined,
+  trailingSlash: isStaticExport,
   basePath,
   assetPrefix: basePath || undefined,
-  images: {
-    unoptimized: true,
-  },
+  images: isStaticExport ? { unoptimized: true } : undefined,
 };
 
 export default nextConfig;
