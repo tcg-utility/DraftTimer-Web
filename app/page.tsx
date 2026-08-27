@@ -656,6 +656,7 @@ export default function Home() {
               <button className="close-button" type="button" onClick={() => setSettingsOpen(false)} aria-label="閉じる">×</button>
             </header>
 
+            <div className="settings-scroll-area">
             <div className="settings-toolbar">
               <label><span>編集するタイマー</span><select value={draft.id} onChange={(event) => selectTimer(event.target.value)}>{timers.map((timer) => <option value={timer.id} key={timer.id}>{timer.name}</option>)}</select></label>
               <div className="compact-actions"><button type="button" onClick={addTimer}>＋ 新規</button><button type="button" onClick={copyTimer}>複製</button><button className="danger" type="button" onClick={deleteTimer} disabled={timers.length <= 1}>削除</button></div>
@@ -707,6 +708,7 @@ export default function Home() {
             </div>
 
             <footer className="settings-footer"><span>予想所要時間：約 {estimateMinutes(draft)}分</span><div><button className="secondary-button" type="button" onClick={() => setSettingsOpen(false)}>キャンセル</button><button className="save-button" type="button" onClick={saveSettings} disabled={!draft.name.trim()}>保存して閉じる</button></div></footer>
+            </div>
           </section>
         </div>
       )}
