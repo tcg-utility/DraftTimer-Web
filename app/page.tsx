@@ -305,13 +305,14 @@ export default function Home() {
   };
 
   const announceNumber = (text: string, settings: TimerSettings) => {
-    if (!settings.speechEnabled || !('speechSynthesis' in window) || window.speechSynthesis.speaking) return;
+    if (!settings.speechEnabled || !('speechSynthesis' in window)) return;
     const utterance = new SpeechSynthesisUtterance(text);
     const voice = window.speechSynthesis.getVoices().find((item) => item.name === settings.speechVoice);
     if (voice) utterance.voice = voice;
     utterance.lang = voice?.lang || 'ja-JP';
     utterance.rate = settings.speechRate;
     utterance.volume = settings.speechVolume;
+    window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   };
 
@@ -330,8 +331,14 @@ export default function Home() {
       const whole = Math.ceil(left / 1000);
       if (whole !== lastSpoken) {
         lastSpoken = whole;
-        if (whole > 0 && whole <= 5) announceNumber(String(whole), settings);
-        else if (whole > 0 && whole % 60 === 0) announceNumber(`残り${whole / 60}分です`, settings);
+        if (whole > 30 && whole % 60 === 0) {
+          announceNumber(`残り${whole / 60}分です`, settings);
+        } else if (whole > 0 && whole <= 30 && whole % 10 === 0) {
+          announceNumber(`残り${whole}秒です`, settings);
+        }
+        if (whole === 3 || whole === 2 || whole === 1) {
+          announceNumber(String(whole), settings);
+        }
       }
     }
     setRemainingMs(0);
