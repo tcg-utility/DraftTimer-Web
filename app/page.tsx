@@ -163,6 +163,12 @@ function formatTime(milliseconds: number) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+function initialDisplaySeconds(settings: TimerSettings, step?: DraftStep) {
+  if (!step) return 0;
+  if (step.kind === 'session' || step.kind === 'pack') return turnSeconds(settings, 1);
+  return step.seconds;
+}
+
 function normalizeTimer(raw: Partial<TimerSettings>): TimerSettings {
   const merged = { ...defaultTimer, ...raw };
   return {
@@ -191,7 +197,7 @@ export default function Home() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [ready, setReady] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [remainingMs, setRemainingMs] = useState(0);
+  const [remainingMs, setRemainingMs] = useState(turnSeconds(defaultTimer, 1) * 1000);
   const [isActive, setIsActive] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [status, setStatus] = useState('停止中');
@@ -216,7 +222,9 @@ export default function Home() {
           setTimers(restored);
           const nextId = restored.some((timer) => timer.id === parsed.selectedId) ? parsed.selectedId! : restored[0].id;
           setSelectedId(nextId);
-          setDraft(restored.find((timer) => timer.id === nextId) ?? restored[0]);
+          const selected = restored.find((timer) => timer.id === nextId) ?? restored[0];
+          setDraft(selected);
+          setRemainingMs(initialDisplaySeconds(selected, buildSteps(selected)[0]) * 1000);
         }
       }
     } catch {
@@ -270,11 +278,11 @@ export default function Home() {
     return () => document.removeEventListener('visibilitychange', pauseWhenHidden);
   });
 
-  const setStep = (index: number, sourceSteps = steps) => {
+  const setStep = (index: number, sourceSteps = steps, sourceSettings = current) => {
     const bounded = clamp(index, 0, Math.max(0, sourceSteps.length - 1));
     currentIndexRef.current = bounded;
     setCurrentIndex(bounded);
-    setRemainingMs((sourceSteps[bounded]?.seconds ?? 0) * 1000);
+    setRemainingMs(initialDisplaySeconds(sourceSettings, sourceSteps[bounded]) * 1000);
   };
 
   const stopSpeech = () => {
@@ -303,6 +311,7 @@ export default function Home() {
     while (left > 0) {
       await waitForResume(token);
       await new Promise((resolve) => setTimeout(resolve, Math.min(80, left)));
+      if (runRef.current.token !== token || !runRef.current.active) throw new Error('cancelled');
       const now = performance.now();
       if (!runRef.current.paused) left -= now - previous;
       previous = now;
@@ -356,6 +365,7 @@ export default function Home() {
     while (left > 0) {
       await waitForResume(token);
       await new Promise((resolve) => setTimeout(resolve, 50));
+      if (runRef.current.token !== token || !runRef.current.active) throw new Error('cancelled');
       const now = performance.now();
       if (!runRef.current.paused) left = Math.max(0, left - (now - previous));
       previous = now;
@@ -434,7 +444,7 @@ export default function Home() {
       try {
         for (let index = startIndex; index < sequence.length; index += 1) {
           await waitForResume(token);
-          setStep(index, sequence);
+          setStep(index, sequence, settingsSnapshot);
           await executeStep(sequence[index], settingsSnapshot, token);
         }
         if (runRef.current.token === token) {
@@ -497,7 +507,7 @@ export default function Home() {
     setSelectedId(normalized.id);
     halt();
     const nextSteps = buildSteps(normalized);
-    setStep(0, nextSteps);
+    setStep(0, nextSteps, normalized);
     setStatus('停止中');
     setSettingsOpen(false);
   };
@@ -508,7 +518,7 @@ export default function Home() {
     halt();
     setSelectedId(id);
     setDraft(next);
-    setStep(0, buildSteps(next));
+    setStep(0, buildSteps(next), next);
     setStatus('停止中');
   };
 
@@ -534,7 +544,7 @@ export default function Home() {
     setSelectedId(selected.id);
     setDraft(selected);
     halt();
-    setStep(0, buildSteps(selected));
+    setStep(0, buildSteps(selected), selected);
   };
 
   const updateDraft = <K extends keyof TimerSettings>(key: K, value: TimerSettings[K]) =>
