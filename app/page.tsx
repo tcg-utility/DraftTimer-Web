@@ -38,6 +38,7 @@ type DraftStep = {
 };
 
 const STORAGE_KEY = 'drafttimer:web:v1';
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 const defaultPerCard = [40, 40, 35, 30, 25, 25, 20, 20, 15, 10, 10, 5, 5, 5];
 const defaultTimer: TimerSettings = {
   id: 'standard-draft',
@@ -243,7 +244,7 @@ export default function Home() {
     }
     setReady(true);
     if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
-      navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+      navigator.serviceWorker.register(`${BASE_PATH}/sw.js`).catch(() => undefined);
     }
   }, []);
 
