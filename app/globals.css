@@ -173,9 +173,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .range-field { display: grid; gap: 7px; margin-top: 12px; }
 .range-field span { display: flex; justify-content: space-between; }
 .range-field input { width: 100%; accent-color: var(--accent); }
-.install-note { padding: 15px 17px; border: 1px solid #cbdde5; border-radius: 15px; background: #eef7fa; color: var(--navy); }
-.install-note strong { font-size: 12px; }
-.install-note p { margin: 5px 0 0; color: #506b7c; font-size: 11px; line-height: 1.65; }
 .settings-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 28px; border-top: 1px solid var(--line); background: white; color: var(--muted); font-size: 12px; font-weight: 700; }
 .settings-footer > div { display: flex; gap: 8px; }
 .settings-footer button { min-height: 42px; padding: 0 18px; border-radius: 11px; cursor: pointer; }

@@ -703,7 +703,6 @@ export default function Home() {
                   <div className="field-row"><label className="field"><span>読み上げ速度</span><NumberSelect value={draft.speechRate} options={speechRateOptions} onChange={(value) => updateDraft('speechRate', value)} format={(value) => `${value.toFixed(1)}×`} /></label><label className="field"><span>音量</span><NumberSelect value={draft.speechVolume} options={speechVolumeOptions} onChange={(value) => updateDraft('speechVolume', value)} format={(value) => `${Math.round(value * 100)}%`} /></label></div>
                 </fieldset>
 
-                <aside className="install-note"><strong>iPhone / iPad でアプリのように使う</strong><p>Safariの共有ボタンから「ホーム画面に追加」を選んでください。2回目以降はホーム画面から起動でき、設定はこの端末内に保存されます。</p></aside>
               </div>
             </div>
 
