@@ -1,0 +1,13 @@
+{
+  "name": "Draft Timer",
+  "short_name": "DraftTimer",
+  "description": "カードドラフトの進行を音声で案内するタイマー",
+  "lang": "ja",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f6f5f0",
+  "theme_color": "#173a52",
+  "categories": ["utilities", "productivity"]
+}
