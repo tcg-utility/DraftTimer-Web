@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://draft-timer-jp.numbergirlsyndromed.chatgpt.site'),
   title: 'Draft Timer',
   description: 'カードドラフトの進行を音声で案内する、ブラウザ対応タイマー。',
   applicationName: 'Draft Timer',
