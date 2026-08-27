@@ -72,6 +72,7 @@ const nonNegativeSecondOptions = [0, ...secondOptions];
 const stepDecreaseOptions = secondOptions.filter((value) => value <= 300);
 const speechRateOptions = numberRange(5, 20).map((value) => value / 10);
 const speechVolumeOptions = numberRange(0, 20).map((value) => value / 20);
+const monotonicNow = () => performance.now();
 
 function NumberSelect({
   value,
@@ -114,7 +115,7 @@ function turnSeconds(settings: TimerSettings, turn: number) {
   if (settings.countType === 'step') {
     return Math.max(0, settings.baseSeconds + settings.stepDecrease * (remainingCards(settings, turn) - 1));
   }
-  return Math.max(0, settings.perCardSeconds[turn - 1] ?? settings.perCardSeconds.at(-1) ?? 10);
+  return Math.max(0, settings.perCardSeconds[turn - 1] ?? defaultPerCard[turn - 1] ?? 10);
 }
 
 function directionForPack(settings: TimerSettings, pack: number): Direction {
@@ -217,6 +218,7 @@ export default function Home() {
 
   const currentIndexRef = useRef(0);
   const runRef = useRef({ token: 0, active: false, paused: false });
+  const resumeStatusRef = useRef('停止中');
   const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
 
   useEffect(() => {
@@ -226,6 +228,8 @@ export default function Home() {
         const parsed = JSON.parse(saved) as { timers?: Partial<TimerSettings>[]; selectedId?: string };
         const restored = parsed.timers?.map(normalizeTimer).filter((timer) => timer.name) ?? [];
         if (restored.length) {
+          // localStorage is only available after the client mounts.
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           setTimers(restored);
           const nextId = restored.some((timer) => timer.id === parsed.selectedId) ? parsed.selectedId! : restored[0].id;
           setSelectedId(nextId);
@@ -277,14 +281,6 @@ export default function Home() {
     };
   }, [isActive, isPaused]);
 
-  useEffect(() => {
-    const pauseWhenHidden = () => {
-      if (document.hidden && runRef.current.active && !runRef.current.paused) pauseTimer();
-    };
-    document.addEventListener('visibilitychange', pauseWhenHidden);
-    return () => document.removeEventListener('visibilitychange', pauseWhenHidden);
-  });
-
   const setStep = (index: number, sourceSteps = steps, sourceSettings = current) => {
     const bounded = clamp(index, 0, Math.max(0, sourceSteps.length - 1));
     currentIndexRef.current = bounded;
@@ -300,9 +296,16 @@ export default function Home() {
     runRef.current.token += 1;
     runRef.current.active = false;
     runRef.current.paused = false;
+    resumeStatusRef.current = '停止中';
     stopSpeech();
     setIsActive(false);
     setIsPaused(false);
+  };
+
+  const resetProgressFor = (settings: TimerSettings) => {
+    halt();
+    setStep(0, buildSteps(settings), settings);
+    setStatus('停止中');
   };
 
   const waitForResume = async (token: number) => {
@@ -314,14 +317,12 @@ export default function Home() {
 
   const sleepPausable = async (milliseconds: number, token: number) => {
     let left = milliseconds;
-    let previous = performance.now();
     while (left > 0) {
       await waitForResume(token);
+      const startedAt = monotonicNow();
       await new Promise((resolve) => setTimeout(resolve, Math.min(80, left)));
       if (runRef.current.token !== token || !runRef.current.active) throw new Error('cancelled');
-      const now = performance.now();
-      if (!runRef.current.paused) left -= now - previous;
-      previous = now;
+      if (!runRef.current.paused) left -= monotonicNow() - startedAt;
     }
   };
 
@@ -366,24 +367,26 @@ export default function Home() {
 
   const countdown = async (seconds: number, settings: TimerSettings, token: number) => {
     let left = seconds * 1000;
-    let previous = performance.now();
-    let lastSpoken = Math.ceil(seconds);
+    const startWhole = Math.ceil(seconds);
+    let lastSpoken: number | null = null;
     setRemainingMs(left);
     while (left > 0) {
       await waitForResume(token);
+      const startedAt = monotonicNow();
       await new Promise((resolve) => setTimeout(resolve, 50));
       if (runRef.current.token !== token || !runRef.current.active) throw new Error('cancelled');
-      const now = performance.now();
-      if (!runRef.current.paused) left = Math.max(0, left - (now - previous));
-      previous = now;
+      if (!runRef.current.paused) left = Math.max(0, left - (monotonicNow() - startedAt));
       setRemainingMs(left);
       const whole = Math.ceil(left / 1000);
       if (whole !== lastSpoken) {
+        const isInitialSecond = lastSpoken === null && whole === startWhole;
         lastSpoken = whole;
-        if (whole > 30 && whole % 60 === 0) {
-          announceNumber(`残り${whole / 60}分です`, settings);
-        } else if (whole > 0 && whole <= 30 && whole % 10 === 0) {
-          announceNumber(`残り${whole}秒です`, settings);
+        if (!isInitialSecond) {
+          if (whole > 30 && whole % 60 === 0) {
+            announceNumber(`残り${whole / 60}分です`, settings);
+          } else if (whole > 0 && whole <= 30 && whole % 10 === 0) {
+            announceNumber(`残り${whole}秒です`, settings);
+          }
         }
         if (whole === 3 || whole === 2 || whole === 1) {
           announceNumber(String(whole), settings);
@@ -439,13 +442,13 @@ export default function Home() {
     }
   };
 
-  const beginRun = (startIndex = currentIndexRef.current) => {
+  const beginRun = (startIndex = currentIndexRef.current, startPaused = false) => {
     const token = runRef.current.token + 1;
     const settingsSnapshot = { ...current, packIntervals: [...current.packIntervals], perCardSeconds: [...current.perCardSeconds] };
     const sequence = buildSteps(settingsSnapshot);
-    runRef.current = { token, active: true, paused: false };
+    runRef.current = { token, active: true, paused: startPaused };
     setIsActive(true);
-    setIsPaused(false);
+    setIsPaused(startPaused);
 
     void (async () => {
       try {
@@ -467,11 +470,20 @@ export default function Home() {
 
   const pauseTimer = () => {
     if (!runRef.current.active) return;
+    resumeStatusRef.current = status;
     runRef.current.paused = true;
     stopSpeech();
     setIsPaused(true);
     setStatus('一時停止中');
   };
+
+  useEffect(() => {
+    const pauseWhenHidden = () => {
+      if (document.hidden && runRef.current.active && !runRef.current.paused) pauseTimer();
+    };
+    document.addEventListener('visibilitychange', pauseWhenHidden);
+    return () => document.removeEventListener('visibilitychange', pauseWhenHidden);
+  });
 
   const togglePlay = () => {
     if (runRef.current.active && !runRef.current.paused) {
@@ -481,7 +493,7 @@ export default function Home() {
     if (runRef.current.active && runRef.current.paused) {
       runRef.current.paused = false;
       setIsPaused(false);
-      setStatus('再開中');
+      setStatus(resumeStatusRef.current);
       return;
     }
     if (status === '完了') setStep(0);
@@ -489,17 +501,21 @@ export default function Home() {
   };
 
   const resetTimer = () => {
-    halt();
-    setStep(0);
-    setStatus('停止中');
+    resetProgressFor(current);
   };
 
   const jumpTo = (index: number) => {
     const restart = runRef.current.active;
+    const stayPaused = runRef.current.paused;
     halt();
     setStep(index);
-    setStatus('停止中');
-    if (restart) beginRun(index);
+    if (restart) {
+      resumeStatusRef.current = stayPaused ? '再開中' : '停止中';
+      setStatus(stayPaused ? '一時停止中' : '停止中');
+      beginRun(index, stayPaused);
+    } else {
+      setStatus('停止中');
+    }
   };
 
   const openSettings = () => {
@@ -512,21 +528,16 @@ export default function Home() {
     const normalized = normalizeTimer(draft);
     setTimers((items) => items.map((item) => item.id === normalized.id ? normalized : item));
     setSelectedId(normalized.id);
-    halt();
-    const nextSteps = buildSteps(normalized);
-    setStep(0, nextSteps, normalized);
-    setStatus('停止中');
+    resetProgressFor(normalized);
     setSettingsOpen(false);
   };
 
   const selectTimer = (id: string) => {
     const next = timers.find((timer) => timer.id === id);
     if (!next) return;
-    halt();
     setSelectedId(id);
     setDraft(next);
-    setStep(0, buildSteps(next), next);
-    setStatus('停止中');
+    resetProgressFor(next);
   };
 
   const addTimer = () => {
@@ -534,6 +545,7 @@ export default function Home() {
     setTimers((items) => [...items, copy]);
     setSelectedId(copy.id);
     setDraft(copy);
+    resetProgressFor(copy);
   };
 
   const copyTimer = () => {
@@ -541,6 +553,7 @@ export default function Home() {
     setTimers((items) => [...items, copy]);
     setSelectedId(copy.id);
     setDraft(copy);
+    resetProgressFor(copy);
   };
 
   const deleteTimer = () => {
@@ -550,8 +563,7 @@ export default function Home() {
     setTimers(next);
     setSelectedId(selected.id);
     setDraft(selected);
-    halt();
-    setStep(0, buildSteps(selected), selected);
+    resetProgressFor(selected);
   };
 
   const updateDraft = <K extends keyof TimerSettings>(key: K, value: TimerSettings[K]) =>
@@ -645,7 +657,7 @@ export default function Home() {
             </header>
 
             <div className="settings-toolbar">
-              <label><span>編集するタイマー</span><select value={draft.id} onChange={(event) => { const timer = timers.find((item) => item.id === event.target.value); if (timer) { setDraft(timer); setSelectedId(timer.id); } }}>{timers.map((timer) => <option value={timer.id} key={timer.id}>{timer.name}</option>)}</select></label>
+              <label><span>編集するタイマー</span><select value={draft.id} onChange={(event) => selectTimer(event.target.value)}>{timers.map((timer) => <option value={timer.id} key={timer.id}>{timer.name}</option>)}</select></label>
               <div className="compact-actions"><button type="button" onClick={addTimer}>＋ 新規</button><button type="button" onClick={copyTimer}>複製</button><button className="danger" type="button" onClick={deleteTimer} disabled={timers.length <= 1}>削除</button></div>
             </div>
 
@@ -680,7 +692,7 @@ export default function Home() {
                   <div className="segmented three"><button type="button" className={draft.countType === 'fixed' ? 'selected' : ''} onClick={() => updateDraft('countType', 'fixed')}>固定</button><button type="button" className={draft.countType === 'perCard' ? 'selected' : ''} onClick={() => updateDraft('countType', 'perCard')}>個別</button><button type="button" className={draft.countType === 'step' ? 'selected' : ''} onClick={() => updateDraft('countType', 'step')}>階段</button></div>
                   {draft.countType === 'fixed' && <label className="field full"><span>1ピックの時間</span><NumberSelect value={draft.fixedSeconds} options={secondOptions} onChange={(value) => updateDraft('fixedSeconds', value)} format={(value) => `${value}秒`} /></label>}
                   {draft.countType === 'step' && <><div className="field-row"><label className="field"><span>下駄秒数</span><NumberSelect value={draft.baseSeconds} options={nonNegativeSecondOptions} onChange={(value) => updateDraft('baseSeconds', value)} format={(value) => `${value}秒`} /></label><label className="field"><span>1枚ごとの減少量</span><NumberSelect value={draft.stepDecrease} options={stepDecreaseOptions} onChange={(value) => updateDraft('stepDecrease', value)} format={(value) => `${value}秒`} /></label></div><p className="preview-line">1ピック目 {turnSeconds(draft, 1)}秒 → 2ピック目 {turnSeconds(draft, 2)}秒 → 3ピック目 {turnSeconds(draft, 3)}秒</p></>}
-                  {draft.countType === 'perCard' && <div className="per-card-grid">{Array.from({ length: Math.max(1, turnCount(draft) - 1) }, (_, index) => <label className="mini-field" key={index}><span>{pickRange(draft, index + 1)}</span><NumberSelect value={draft.perCardSeconds[index] ?? defaultPerCard[index] ?? 10} options={secondOptions} onChange={(value) => { const next = [...draft.perCardSeconds]; next[index] = value; updateDraft('perCardSeconds', next); }} format={(value) => `${value}秒`} /></label>)}</div>}
+                  {draft.countType === 'perCard' && <div className="per-card-grid">{Array.from({ length: Math.max(1, turnCount(draft) - 1) }, (_, index) => <label className="mini-field" key={index}><span>{pickRange(draft, index + 1)}</span><NumberSelect value={turnSeconds(draft, index + 1)} options={secondOptions} onChange={(value) => { const next = [...draft.perCardSeconds]; next[index] = value; updateDraft('perCardSeconds', next); }} format={(value) => `${value}秒`} /></label>)}</div>}
                 </fieldset>
 
                 <fieldset className="settings-card">
