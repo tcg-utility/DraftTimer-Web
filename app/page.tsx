@@ -60,6 +60,38 @@ const defaultTimer: TimerSettings = {
   speechVolume: 1,
 };
 
+const numberRange = (start: number, end: number, step = 1) =>
+  Array.from({ length: Math.floor((end - start) / step) + 1 }, (_, index) => start + index * step);
+
+const packCountOptions = numberRange(1, 10);
+const cardCountOptions = numberRange(2, 30);
+const cardsPerPickOptions = numberRange(1, 5);
+const deckBuildMinuteOptions = numberRange(0, 120);
+const secondOptions = [...numberRange(1, 120), ...numberRange(130, 600, 10), 900, 1200, 1800, 3600];
+const nonNegativeSecondOptions = [0, ...secondOptions];
+const stepDecreaseOptions = secondOptions.filter((value) => value <= 300);
+const speechRateOptions = numberRange(5, 20).map((value) => value / 10);
+const speechVolumeOptions = numberRange(0, 20).map((value) => value / 20);
+
+function NumberSelect({
+  value,
+  options,
+  onChange,
+  format = (option: number) => String(option),
+}: {
+  value: number;
+  options: number[];
+  onChange: (value: number) => void;
+  format?: (value: number) => string;
+}) {
+  const choices = Array.from(new Set([...options, value])).sort((a, b) => a - b);
+  return (
+    <select value={value} onChange={(event) => onChange(Number(event.target.value))}>
+      {choices.map((option) => <option value={option} key={option}>{format(option)}</option>)}
+    </select>
+  );
+}
+
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
 
@@ -606,16 +638,16 @@ export default function Home() {
                   <legend>基本設定</legend>
                   <label className="field full"><span>タイマー名</span><input value={draft.name} maxLength={30} onChange={(event) => updateDraft('name', event.target.value)} /></label>
                   <div className="field-row">
-                    <label className="field"><span>パック数 / 人</span><input type="number" min="1" max="10" value={draft.packCount} onChange={(event) => updateDraft('packCount', clamp(Number(event.target.value), 1, 10))} /></label>
-                    <label className="field"><span>カード枚数 / パック</span><input type="number" min="2" max="30" value={draft.cardCount} onChange={(event) => updateDraft('cardCount', clamp(Number(event.target.value), 2, 30))} /></label>
+                    <label className="field"><span>パック数 / 人</span><NumberSelect value={draft.packCount} options={packCountOptions} onChange={(value) => updateDraft('packCount', value)} format={(value) => `${value}パック`} /></label>
+                    <label className="field"><span>カード枚数 / パック</span><NumberSelect value={draft.cardCount} options={cardCountOptions} onChange={(value) => updateDraft('cardCount', value)} format={(value) => `${value}枚`} /></label>
                   </div>
                   <div className="field-row">
-                    <label className="field"><span>1ピックの獲得枚数</span><input type="number" min="1" max="5" value={draft.cardsPerPick} onChange={(event) => updateDraft('cardsPerPick', clamp(Number(event.target.value), 1, 5))} /></label>
-                    <label className="field"><span>デッキ構築（分）</span><input type="number" min="0" max="120" value={Math.round(draft.deckBuildSeconds / 60)} onChange={(event) => updateDraft('deckBuildSeconds', clamp(Number(event.target.value), 0, 120) * 60)} /></label>
+                    <label className="field"><span>1ピックの獲得枚数</span><NumberSelect value={draft.cardsPerPick} options={cardsPerPickOptions} onChange={(value) => updateDraft('cardsPerPick', value)} format={(value) => `${value}枚`} /></label>
+                    <label className="field"><span>デッキ構築時間</span><NumberSelect value={Math.round(draft.deckBuildSeconds / 60)} options={deckBuildMinuteOptions} onChange={(value) => updateDraft('deckBuildSeconds', value * 60)} format={(value) => value === 0 ? 'なし' : `${value}分`} /></label>
                   </div>
                 </fieldset>
 
-                {draft.packCount > 1 && <fieldset className="settings-card"><legend>パック間インターバル</legend><div className="interval-grid">{Array.from({ length: draft.packCount - 1 }, (_, index) => <label className="field" key={index}><span>{index + 1} → {index + 2} パック（秒）</span><input type="number" min="0" max="3600" value={draft.packIntervals[index] ?? 60} onChange={(event) => { const next = [...draft.packIntervals]; next[index] = clamp(Number(event.target.value), 0, 3600); updateDraft('packIntervals', next); }} /></label>)}</div></fieldset>}
+                {draft.packCount > 1 && <fieldset className="settings-card"><legend>パック間インターバル</legend><div className="interval-grid">{Array.from({ length: draft.packCount - 1 }, (_, index) => <label className="field" key={index}><span>{index + 1} → {index + 2} パック</span><NumberSelect value={draft.packIntervals[index] ?? 60} options={nonNegativeSecondOptions} onChange={(value) => { const next = [...draft.packIntervals]; next[index] = value; updateDraft('packIntervals', next); }} format={(value) => value === 0 ? 'なし' : value >= 60 && value % 60 === 0 ? `${value}秒（${value / 60}分）` : `${value}秒`} /></label>)}</div></fieldset>}
 
                 <fieldset className="settings-card">
                   <legend>回す方向</legend>
@@ -629,17 +661,16 @@ export default function Home() {
                 <fieldset className="settings-card">
                   <legend>カウント方式</legend>
                   <div className="segmented three"><button type="button" className={draft.countType === 'fixed' ? 'selected' : ''} onClick={() => updateDraft('countType', 'fixed')}>固定</button><button type="button" className={draft.countType === 'perCard' ? 'selected' : ''} onClick={() => updateDraft('countType', 'perCard')}>個別</button><button type="button" className={draft.countType === 'step' ? 'selected' : ''} onClick={() => updateDraft('countType', 'step')}>階段</button></div>
-                  {draft.countType === 'fixed' && <label className="field full"><span>1ピックの時間（秒）</span><input type="number" min="1" max="3600" value={draft.fixedSeconds} onChange={(event) => updateDraft('fixedSeconds', clamp(Number(event.target.value), 1, 3600))} /></label>}
-                  {draft.countType === 'step' && <><div className="field-row"><label className="field"><span>下駄秒数</span><input type="number" min="0" max="3600" value={draft.baseSeconds} onChange={(event) => updateDraft('baseSeconds', clamp(Number(event.target.value), 0, 3600))} /></label><label className="field"><span>1枚ごとの減少量</span><input type="number" min="1" max="300" value={draft.stepDecrease} onChange={(event) => updateDraft('stepDecrease', clamp(Number(event.target.value), 1, 300))} /></label></div><p className="preview-line">1ピック目 {turnSeconds(draft, 1)}秒 → 2ピック目 {turnSeconds(draft, 2)}秒 → 3ピック目 {turnSeconds(draft, 3)}秒</p></>}
-                  {draft.countType === 'perCard' && <div className="per-card-grid">{Array.from({ length: Math.max(1, turnCount(draft) - 1) }, (_, index) => <label className="mini-field" key={index}><span>{pickRange(draft, index + 1)}</span><input type="number" min="1" max="3600" value={draft.perCardSeconds[index] ?? defaultPerCard[index] ?? 10} onChange={(event) => { const next = [...draft.perCardSeconds]; next[index] = clamp(Number(event.target.value), 1, 3600); updateDraft('perCardSeconds', next); }} /><small>秒</small></label>)}</div>}
+                  {draft.countType === 'fixed' && <label className="field full"><span>1ピックの時間</span><NumberSelect value={draft.fixedSeconds} options={secondOptions} onChange={(value) => updateDraft('fixedSeconds', value)} format={(value) => `${value}秒`} /></label>}
+                  {draft.countType === 'step' && <><div className="field-row"><label className="field"><span>下駄秒数</span><NumberSelect value={draft.baseSeconds} options={nonNegativeSecondOptions} onChange={(value) => updateDraft('baseSeconds', value)} format={(value) => `${value}秒`} /></label><label className="field"><span>1枚ごとの減少量</span><NumberSelect value={draft.stepDecrease} options={stepDecreaseOptions} onChange={(value) => updateDraft('stepDecrease', value)} format={(value) => `${value}秒`} /></label></div><p className="preview-line">1ピック目 {turnSeconds(draft, 1)}秒 → 2ピック目 {turnSeconds(draft, 2)}秒 → 3ピック目 {turnSeconds(draft, 3)}秒</p></>}
+                  {draft.countType === 'perCard' && <div className="per-card-grid">{Array.from({ length: Math.max(1, turnCount(draft) - 1) }, (_, index) => <label className="mini-field" key={index}><span>{pickRange(draft, index + 1)}</span><NumberSelect value={draft.perCardSeconds[index] ?? defaultPerCard[index] ?? 10} options={secondOptions} onChange={(value) => { const next = [...draft.perCardSeconds]; next[index] = value; updateDraft('perCardSeconds', next); }} format={(value) => `${value}秒`} /></label>)}</div>}
                 </fieldset>
 
                 <fieldset className="settings-card">
                   <legend>音声案内</legend>
                   <label className="toggle-field"><input type="checkbox" checked={draft.speechEnabled} onChange={(event) => updateDraft('speechEnabled', event.target.checked)} /><span>ブラウザの音声で案内する</span></label>
                   <label className="field full"><span>音声</span><select value={draft.speechVoice} onChange={(event) => updateDraft('speechVoice', event.target.value)}><option value="">端末の標準音声</option>{voices.filter((voice) => voice.lang.startsWith('ja')).map((voice) => <option value={voice.name} key={voice.name}>{voice.name}</option>)}</select></label>
-                  <label className="range-field"><span>速度 <b>{draft.speechRate.toFixed(1)}×</b></span><input type="range" min="0.5" max="2" step="0.1" value={draft.speechRate} onChange={(event) => updateDraft('speechRate', Number(event.target.value))} /></label>
-                  <label className="range-field"><span>音量 <b>{Math.round(draft.speechVolume * 100)}%</b></span><input type="range" min="0" max="1" step="0.05" value={draft.speechVolume} onChange={(event) => updateDraft('speechVolume', Number(event.target.value))} /></label>
+                  <div className="field-row"><label className="field"><span>読み上げ速度</span><NumberSelect value={draft.speechRate} options={speechRateOptions} onChange={(value) => updateDraft('speechRate', value)} format={(value) => `${value.toFixed(1)}×`} /></label><label className="field"><span>音量</span><NumberSelect value={draft.speechVolume} options={speechVolumeOptions} onChange={(value) => updateDraft('speechVolume', value)} format={(value) => `${Math.round(value * 100)}%`} /></label></div>
                 </fieldset>
 
                 <aside className="install-note"><strong>iPhone / iPad でアプリのように使う</strong><p>Safariの共有ボタンから「ホーム画面に追加」を選んでください。2回目以降はホーム画面から起動でき、設定はこの端末内に保存されます。</p></aside>

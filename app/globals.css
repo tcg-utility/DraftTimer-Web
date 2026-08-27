@@ -165,8 +165,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .preview-line { margin: 8px 0 0; padding: 10px 12px; border-radius: 10px; background: #f3f5f5; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .interval-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 12px; }
 .per-card-grid { max-height: 220px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px 12px; overflow: auto; padding: 4px; }
-.mini-field { display: grid; grid-template-columns: 1fr 64px 18px; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; }
-.mini-field input { min-width: 0; height: 34px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; }
+.mini-field { display: grid; grid-template-columns: 1fr 96px; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; }
+.mini-field select { min-width: 0; height: 34px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--ink); }
 .toggle-field { display: flex; align-items: center; gap: 9px; margin: 0 0 14px; font-size: 12px; font-weight: 700; }
 .toggle-field input { width: 17px; height: 17px; accent-color: var(--accent); }
 .range-field { display: grid; gap: 7px; margin-top: 12px; }
