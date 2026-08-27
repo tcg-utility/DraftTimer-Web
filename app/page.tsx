@@ -169,6 +169,13 @@ function initialDisplaySeconds(settings: TimerSettings, step?: DraftStep) {
   return step.seconds;
 }
 
+function phaseGroupLabel(step: DraftStep) {
+  if (step.pack) return `${step.pack}パック`;
+  if (step.kind === 'session') return '開始';
+  if (step.kind === 'deck') return '構築';
+  return '終了';
+}
+
 function normalizeTimer(raw: Partial<TimerSettings>): TimerSettings {
   const merged = { ...defaultTimer, ...raw };
   return {
@@ -583,7 +590,7 @@ export default function Home() {
             {steps.map((step, index) => (
               <li key={`${step.kind}-${step.pack ?? 0}-${step.turn ?? 0}`}>
                 <button className={index === currentIndex ? 'phase-item current' : index < currentIndex ? 'phase-item passed' : 'phase-item'} onClick={() => jumpTo(index)} type="button" aria-current={index === currentIndex ? 'step' : undefined}>
-                  <span className="phase-index">{String(index + 1).padStart(2, '0')}</span>
+                  <span className="phase-pack">{phaseGroupLabel(step)}</span>
                   <span className="phase-copy"><strong>{step.label}</strong><small>{step.meta}</small></span>
                   {index === currentIndex && <span className="now-chip">NOW</span>}
                 </button>
