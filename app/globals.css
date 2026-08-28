@@ -167,6 +167,14 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .field:last-child { margin-bottom: 0; }
 .field span, .range-field > span { color: var(--muted); font-size: 11px; font-weight: 700; }
 .field input, .field select { min-width: 0; font-size: 14px; }
+@media (min-width: 431px) {
+  .field-row { margin-bottom: 12px; }
+  .field-row:last-child { margin-bottom: 0; }
+  .field-row > .field, .interval-grid > .field { display: flex; flex-direction: column; }
+  .field-row > .field, .interval-grid > .field { margin-bottom: 0; }
+  .field-row > .field > select, .interval-grid > .field > select { height: 40px; margin-top: auto; flex: 0 0 40px; }
+  .interval-grid { row-gap: 12px; }
+}
 .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 12px; padding: 4px; border-radius: 12px; background: #edf0f1; }
 .segmented.three { grid-template-columns: repeat(3, 1fr); }
 .segmented.compact { margin-top: 8px; }
