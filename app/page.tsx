@@ -693,7 +693,14 @@ export default function Home() {
                   <legend>カウント方式</legend>
                   <div className="segmented three"><button type="button" className={draft.countType === 'fixed' ? 'selected' : ''} onClick={() => updateDraft('countType', 'fixed')}>固定</button><button type="button" className={draft.countType === 'perCard' ? 'selected' : ''} onClick={() => updateDraft('countType', 'perCard')}>個別</button><button type="button" className={draft.countType === 'step' ? 'selected' : ''} onClick={() => updateDraft('countType', 'step')}>階段</button></div>
                   {draft.countType === 'fixed' && <label className="field full"><span>1ピックの時間</span><NumberSelect value={draft.fixedSeconds} options={secondOptions} onChange={(value) => updateDraft('fixedSeconds', value)} format={(value) => `${value}秒`} /></label>}
-                  {draft.countType === 'step' && <><div className="field-row"><label className="field"><span>下駄秒数</span><NumberSelect value={draft.baseSeconds} options={nonNegativeSecondOptions} onChange={(value) => updateDraft('baseSeconds', value)} format={(value) => `${value}秒`} /></label><label className="field"><span>1枚ごとの減少量</span><NumberSelect value={draft.stepDecrease} options={stepDecreaseOptions} onChange={(value) => updateDraft('stepDecrease', value)} format={(value) => `${value}秒`} /></label></div><p className="preview-line">1ピック目 {turnSeconds(draft, 1)}秒 → 2ピック目 {turnSeconds(draft, 2)}秒 → 3ピック目 {turnSeconds(draft, 3)}秒</p></>}
+                  {draft.countType === 'step' && <>
+                    <div className="field-row">
+                      <label className="field"><span>下駄秒数</span><NumberSelect value={draft.baseSeconds} options={nonNegativeSecondOptions} onChange={(value) => updateDraft('baseSeconds', value)} format={(value) => `${value}秒`} /></label>
+                      <label className="field"><span>1枚ごとの減少量</span><NumberSelect value={draft.stepDecrease} options={stepDecreaseOptions} onChange={(value) => updateDraft('stepDecrease', value)} format={(value) => `${value}秒`} /></label>
+                    </div>
+                    <p className="preview-line">1ピック目 {turnSeconds(draft, 1)}秒 → 2ピック目 {turnSeconds(draft, 2)}秒 → 3ピック目 {turnSeconds(draft, 3)}秒</p>
+                    <p className="step-note">※ 計算方法：1ピックの時間（秒）＝1枚ごとの減少量 ×（ピック開始時のパック残枚数 − 1）＋下駄秒数</p>
+                  </>}
                   {draft.countType === 'perCard' && <div className="per-card-grid">{Array.from({ length: Math.max(1, turnCount(draft) - 1) }, (_, index) => <label className="mini-field" key={index}><span>{pickRange(draft, index + 1)}</span><NumberSelect value={turnSeconds(draft, index + 1)} options={secondOptions} onChange={(value) => { const next = [...draft.perCardSeconds]; next[index] = value; updateDraft('perCardSeconds', next); }} format={(value) => `${value}秒`} /></label>)}</div>}
                 </fieldset>
 
