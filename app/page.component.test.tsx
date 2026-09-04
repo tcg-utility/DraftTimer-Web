@@ -88,6 +88,13 @@ describe('settings editor', () => {
 });
 
 describe('timer operation', () => {
+  it('スマホ用の予想所要時間をタイマー画面に表示する', () => {
+    render(<Home />);
+
+    const estimate = screen.getByLabelText(/^予想所要時間：約 \d+\.\d分$/);
+    expect(estimate.textContent).toMatch(/^予想 約 \d+\.\d分$/);
+  });
+
   it('一時停止中は減算せず、フェイズ移動とリセットでも停止状態を保つ', async () => {
     vi.useFakeTimers();
     render(<Home />);

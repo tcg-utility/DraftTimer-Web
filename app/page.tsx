@@ -1225,6 +1225,7 @@ export default function Home() {
   const showPack = currentStep && !['session', 'deck', 'end'].includes(currentStep.kind);
   const showDirection = currentStep && ['pack', 'pick', 'last', 'interval'].includes(currentStep.kind);
   const mainLabel = currentStep?.kind === 'pick' ? currentStep.label : currentStep?.label ?? '準備完了';
+  const estimatedDuration = estimateMinutes(current);
 
   return (
     <main className="app-shell">
@@ -1247,7 +1248,7 @@ export default function Home() {
         <aside className="phase-panel">
           <div className="panel-heading">
             <div><p className="eyebrow">PROGRESS</p><h2>フェイズ進行</h2></div>
-            <span className="duration-chip">約 {estimateMinutes(current)}分</span>
+            <span className="duration-chip">約 {estimatedDuration}分</span>
           </div>
           <ol className="phase-list">
             {steps.map((step, index) => (
@@ -1263,7 +1264,13 @@ export default function Home() {
         </aside>
 
         <section className="timer-stage">
-          <div className="mobile-phase-row"><span>{currentIndex + 1} / {steps.length}</span><strong>{currentStep?.label}</strong></div>
+          <div className="mobile-phase-row">
+            <span>{currentIndex + 1} / {steps.length}</span>
+            <strong>{currentStep?.label}</strong>
+            <span className="duration-chip mobile-duration-chip" aria-label={`予想所要時間：約 ${estimatedDuration}分`}>
+              予想 約 {estimatedDuration}分
+            </span>
+          </div>
           <div className="session-row">
             <span className={isActive && !isPaused ? 'live-dot pulsing' : 'live-dot'} aria-hidden="true" />
             <span>{current.common.name}</span>

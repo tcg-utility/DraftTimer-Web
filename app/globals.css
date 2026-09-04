@@ -255,8 +255,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .timer-layout { min-height: calc(100vh - 72px); grid-template-columns: 1fr; }
   .phase-panel { display: none; }
   .timer-stage { width: min(100% - 32px, 600px); padding: 34px 0 24px; }
-  .mobile-phase-row { display: flex; justify-content: center; gap: 8px; margin: 0 0 15px; color: var(--muted); font-size: 11px; }
-  .mobile-phase-row strong { max-width: 65%; overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-phase-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; margin: 0 0 15px; color: var(--muted); font-size: 11px; text-align: left; }
+  .mobile-phase-row strong { min-width: 0; overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-duration-chip { justify-self: end; padding: 6px 8px; font-size: 10px; }
   .direction-card { margin: 24px auto 46px; }
   .direction-spacer { height: 105px; }
   .time-display { font-size: clamp(76px, 25vw, 112px); }
