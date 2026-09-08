@@ -1,6 +1,8 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { cloneTimer, defaultTimer } from '@/lib/timer-domain';
+import { PROGRESS_STORAGE_KEY, timerSignature, writeSettings } from '@/lib/settings-storage';
 import Home from './page';
 
 async function openSettings() {
@@ -100,6 +102,7 @@ describe('timer operation', () => {
     render(<Home />);
 
     fireEvent.click(screen.getByRole('button', { name: '▶ 開始' }));
+    fireEvent.click(screen.getByRole('button', { name: '確認して開始' }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4_500);
     });
@@ -117,13 +120,97 @@ describe('timer operation', () => {
     expect(screen.getByRole('status').textContent).toBe('一時停止中');
 
     fireEvent.click(screen.getByRole('button', { name: '次のフェイズ →' }));
+    fireEvent.click(screen.getByRole('button', { name: '移動する' }));
     expect(screen.getByRole('status').textContent).toBe('一時停止中');
     fireEvent.click(screen.getByRole('button', { name: 'リセット' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '進行をリセットしますか？' })).getByRole('button', { name: 'リセット' }));
     expect(screen.getByRole('status').textContent).toBe('停止中');
     expect(screen.getByLabelText(/^残り/).textContent).toBe('00:40');
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(100);
     });
+  });
+
+  it('進行中の下段フェイズ操作は短押しでは動かず、0.8秒長押しで確定する', async () => {
+    vi.useFakeTimers();
+    render(<Home />);
+
+    fireEvent.click(screen.getByRole('button', { name: '▶ 開始' }));
+    fireEvent.click(screen.getByRole('button', { name: '確認して開始' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_500);
+    });
+
+    const currentPhase = () => document.querySelector<HTMLButtonElement>('.phase-item[aria-current="step"]')?.textContent;
+    const before = currentPhase();
+    const nextButton = screen.getByRole('button', { name: '次のフェイズ →' });
+    expect(screen.getByText('進行中：リセットと「前／先頭／次」の操作は0.8秒長押し')).toBeTruthy();
+
+    fireEvent.pointerDown(nextButton);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(799);
+    });
+    fireEvent.pointerUp(nextButton);
+    fireEvent.click(nextButton, { detail: 1 });
+    expect(currentPhase()).toBe(before);
+    expect(screen.queryByRole('dialog', { name: 'フェイズを移動しますか？' })).toBeNull();
+
+    fireEvent.pointerDown(nextButton);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(800);
+    });
+    fireEvent.pointerUp(nextButton);
+    fireEvent.click(nextButton, { detail: 1 });
+    expect(currentPhase()).not.toBe(before);
+    expect(screen.queryByRole('dialog', { name: 'フェイズを移動しますか？' })).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+  });
+
+  it('開始前チェックに運用情報を表示する', () => {
+    render(<Home />);
+    fireEvent.click(screen.getByRole('button', { name: '▶ 開始' }));
+    const dialog = screen.getByRole('dialog', { name: '開始前チェック' });
+    expect(within(dialog).getByText('3パック / 人')).toBeTruthy();
+    expect(within(dialog).getByText(/^約 \d+\.\d分$/)).toBeTruthy();
+    expect(within(dialog).queryByText('音声案内')).toBeNull();
+    expect(within(dialog).queryByText('画面消灯防止')).toBeNull();
+  });
+
+  it('設定画面はEscapeで閉じ、設定ボタンへフォーカスを戻す', async () => {
+    render(<Home />);
+    const settingsButton = screen.getByRole('button', { name: '設定を開く' });
+    fireEvent.click(settingsButton);
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'タイマー設定' }).contains(document.activeElement)).toBe(true));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'タイマー設定' })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(settingsButton));
+  });
+
+  it('残り時間バーを支援技術へ公開する', () => {
+    render(<Home />);
+    const progress = screen.getByRole('progressbar', { name: 'フェイズの残り時間' });
+    expect(progress.getAttribute('aria-valuemin')).toBe('0');
+    expect(progress.getAttribute('aria-valuetext')).toMatch(/^残り\d{2}:\d{2}$/);
+  });
+
+  it('前回の残り時間を自動再生せず一時停止状態で復元する', async () => {
+    const timer = cloneTimer(defaultTimer);
+    writeSettings({ timers: [timer], selectedId: timer.id });
+    localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      timerId: timer.id,
+      timerSignature: timerSignature(timer),
+      savedAt: new Date().toISOString(),
+      active: { type: 'counting', stepIndex: 2, remainingMs: 12_345, countdown: 'pick' },
+    }));
+    render(<Home />);
+    const dialog = await screen.findByRole('dialog', { name: '前回の進行が見つかりました' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '前回の進行を再開' }));
+    expect(screen.getByRole('status').textContent).toBe('一時停止中');
+    expect(screen.getByLabelText(/^残り/).textContent).toBe('00:13');
   });
 });

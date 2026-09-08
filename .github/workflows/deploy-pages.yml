@@ -41,11 +41,20 @@ jobs:
       - name: Run automated tests
         run: pnpm test
 
+      - name: Run lint
+        run: pnpm lint
+
       - name: Build static site
-        run: pnpm build
+        run: pnpm build:pages
         env:
           NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
           NEXT_PUBLIC_SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+
+      - name: Install E2E browsers
+        run: pnpm exec playwright install --with-deps chromium webkit
+
+      - name: Run browser E2E tests
+        run: pnpm test:e2e:ci
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
