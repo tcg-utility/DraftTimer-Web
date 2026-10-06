@@ -22,6 +22,7 @@ import {
   nonNegativeSecondOptions,
   normalizeTimer,
   normalizeTimerCollection,
+  numberRange,
   packCountOptions,
   parseSettingsBackup,
   pickRange,
@@ -31,7 +32,7 @@ import {
   speechRateOptions,
   speechVolumeOptions,
   stepDecreaseOptions,
-  turnCount,
+  timedTurnCount,
   turnSeconds,
   buildPickPhasePreview,
   type CountSettings,
@@ -46,6 +47,34 @@ import {
 function NumberSelect({ value, options, onChange, format = String }: { value: number; options: number[]; onChange: (value: number) => void; format?: (value: number) => string }) {
   const choices = Array.from(new Set([...options, value])).sort((a, b) => a - b);
   return <select value={value} onChange={(event) => onChange(Number(event.target.value))}>{choices.map((option) => <option value={option} key={option}>{format(option)}</option>)}</select>;
+}
+
+function TakeLimitFields({
+  cardCount,
+  takeAll,
+  takeCount,
+  onChange,
+}: {
+  cardCount: number;
+  takeAll: boolean;
+  takeCount: number;
+  onChange: (patch: { takeAll?: boolean; takeCount?: number }) => void;
+}) {
+  const boundedTakeCount = clamp(takeCount, 1, cardCount - 1);
+  return (
+    <div className="take-limit-row">
+      <label className="toggle-field take-all-toggle">
+        <input type="checkbox" checked={takeAll} onChange={(event) => onChange({ takeAll: event.target.checked })} />
+        <span>全て取る</span>
+      </label>
+      {!takeAll && (
+        <label className="field">
+          <span>取得枚数</span>
+          <NumberSelect value={boundedTakeCount} options={numberRange(1, cardCount - 1)} onChange={(value) => onChange({ takeCount: value })} format={(value) => `${value}枚`} />
+        </label>
+      )}
+    </div>
+  );
 }
 
 function PickPhasePreviewList({ rule }: { rule: PackRule }) {
@@ -64,7 +93,7 @@ function PickPhasePreviewList({ rule }: { rule: PackRule }) {
 }
 
 function CountSettingsFields({ rule, onChange }: { rule: PackRule; onChange: (count: CountSettings) => void }) {
-  const timedTurns = Math.max(0, turnCount(rule) - 1);
+  const timedTurns = timedTurnCount(rule);
   const perCardSeconds = rule.count.type === 'perCard' ? rule.count.seconds : [];
   return <>
     <div className="segmented three" role="group" aria-label="カウント方式">
@@ -116,6 +145,10 @@ export function SettingsModal({
   const updateCommon = <K extends keyof TimerCommonSettings>(key: K, value: TimerCommonSettings[K]) => updateDraftState((previous) => ({ ...previous, common: { ...previous.common, [key]: value } }));
   const updateSpeech = <K extends keyof SpeechSettings>(key: K, value: SpeechSettings[K]) => updateDraftState((previous) => ({ ...previous, common: { ...previous.common, speech: { ...previous.common.speech, [key]: value } } }));
   const updateSharedRule = (patch: Partial<Omit<SharedPackRule, 'count'>> & { count?: CountSettings }) => updateDraftState((previous) => ({ ...previous, sharedRule: { ...previous.sharedRule, ...patch, count: patch.count ? cloneCountSettings(patch.count) : previous.sharedRule.count } }));
+  const updateSharedCardCount = (value: number) => updateDraftState((previous) => {
+    const cardCount = clamp(value, 2, 30);
+    return { ...previous, sharedRule: { ...previous.sharedRule, cardCount, takeCount: clamp(previous.sharedRule.takeCount, 1, cardCount - 1) } };
+  });
 
   const updatePackCount = (value: number) => {
     const packCount = clamp(value, 1, 10);
@@ -141,6 +174,10 @@ export function SettingsModal({
     rules[editingPackIndex] = { ...rules[editingPackIndex], ...patch, count: patch.count ? cloneCountSettings(patch.count) : rules[editingPackIndex].count };
     return { ...previous, individualRules: rules, individualInitialized: true };
   });
+  const updatePackCardCount = (value: number) => {
+    const cardCount = clamp(value, 2, 30);
+    updatePackRule({ cardCount, takeCount: clamp(draftPackRule.takeCount, 1, cardCount - 1) });
+  };
 
   const selectSettingsMode = (mode: SettingsMode) => {
     updateDraftState((previous) => mode !== 'individual' || previous.individualInitialized
@@ -226,8 +263,9 @@ export function SettingsModal({
 
   const sharedBasic = <>
     <label className="field full"><span>タイマー名</span><input value={draft.common.name} maxLength={30} onChange={(event) => updateCommon('name', event.target.value)} /></label>
-    <div className="field-row"><label className="field"><span>パック数 / 人</span><NumberSelect value={draft.common.packCount} options={packCountOptions} onChange={updatePackCount} format={(value) => `${value}パック`} /></label>{draft.mode === 'shared' && <label className="field"><span>カード枚数 / パック</span><NumberSelect value={draft.sharedRule.cardCount} options={cardCountOptions} onChange={(value) => updateSharedRule({ cardCount: value })} format={(value) => `${value}枚`} /></label>}</div>
+    <div className="field-row"><label className="field"><span>パック数 / 人</span><NumberSelect value={draft.common.packCount} options={packCountOptions} onChange={updatePackCount} format={(value) => `${value}パック`} /></label>{draft.mode === 'shared' && <label className="field"><span>カード枚数 / パック</span><NumberSelect value={draft.sharedRule.cardCount} options={cardCountOptions} onChange={updateSharedCardCount} format={(value) => `${value}枚`} /></label>}</div>
     <div className="field-row">{draft.mode === 'shared' && <label className="field"><span>1ピックの獲得枚数</span><NumberSelect value={draft.sharedRule.cardsPerPick} options={cardsPerPickOptions} onChange={(value) => updateSharedRule({ cardsPerPick: value })} format={(value) => `${value}枚`} /></label>}<label className="field"><span>デッキ構築時間</span><NumberSelect value={Math.round(draft.common.deckBuildSeconds / 60)} options={deckBuildMinuteOptions} onChange={(value) => updateCommon('deckBuildSeconds', value * 60)} format={(value) => value === 0 ? 'なし' : `${value}分`} /></label></div>
+    {draft.mode === 'shared' && <TakeLimitFields cardCount={draft.sharedRule.cardCount} takeAll={draft.sharedRule.takeAll} takeCount={draft.sharedRule.takeCount} onChange={updateSharedRule} />}
   </>;
   const intervals = draft.common.packCount > 1 && <fieldset className="settings-card"><legend>パック間インターバル</legend><div className="interval-grid">{Array.from({ length: draft.common.packCount - 1 }, (_, index) => <label className="field" key={index}><span>{index + 1} → {index + 2} パック</span><NumberSelect value={draft.common.packIntervals[index] ?? 60} options={nonNegativeSecondOptions} onChange={(value) => { const next = [...draft.common.packIntervals]; next[index] = value; updateCommon('packIntervals', next); }} format={(value) => value === 0 ? 'なし' : value >= 60 && value % 60 === 0 ? `${value}秒（${value / 60}分）` : `${value}秒`} /></label>)}</div></fieldset>;
   const speech = <fieldset className="settings-card"><legend>音声案内</legend><label className="toggle-field"><input type="checkbox" checked={draft.common.speech.enabled} onChange={(event) => updateSpeech('enabled', event.target.checked)} /><span>ブラウザの音声で案内する</span></label><label className="field full"><span>音声</span><select value={draft.common.speech.voice} onChange={(event) => updateSpeech('voice', event.target.value)}><option value="">端末の標準音声</option>{voices.filter((voice) => voice.lang.startsWith('ja')).map((voice) => <option value={voice.name} key={voice.name}>{voice.name}</option>)}</select></label><div className="field-row"><label className="field"><span>読み上げ速度</span><NumberSelect value={draft.common.speech.rate} options={speechRateOptions} onChange={(value) => updateSpeech('rate', value)} format={(value) => `${value.toFixed(1)}×`} /></label><label className="field"><span>音量</span><NumberSelect value={draft.common.speech.volume} options={speechVolumeOptions} onChange={(value) => updateSpeech('volume', value)} format={(value) => `${Math.round(value * 100)}%`} /></label></div></fieldset>;
@@ -247,8 +285,17 @@ export function SettingsModal({
           <div className="settings-column"><fieldset className="settings-card pack-settings-card"><legend>パックごとの設定</legend>
             <div className="pack-copy-actions"><button type="button" onClick={copyPreviousPackRule} disabled={editingPackIndex === 0}>前のパックからコピー</button><button type="button" onClick={applyCurrentPackRuleToFollowing} disabled={editingPackIndex >= draft.common.packCount - 1}>この設定を以降へ適用</button><button type="button" onClick={applyCurrentPackRuleToAll}>この設定を全パックへ適用</button><button type="button" onClick={applySharedRuleToAllPacks}>共通ルールで全パックを作り直す</button></div>
             <p className="pack-settings-note">初回は共通設定から作成され、以後は個別設定として保持されます。</p>
-            <div className="pack-tabs" role="tablist" aria-label="設定するパック">{draftPackRules.map((rule, index) => <button id={`pack-tab-${index}`} type="button" role="tab" aria-selected={editingPackIndex === index} aria-controls="pack-settings-panel" tabIndex={editingPackIndex === index ? 0 : -1} aria-label={`${index + 1}パック目、${rule.cardCount}枚、1回${rule.cardsPerPick}枚、${rule.direction === 'left' ? '左' : '右'}、${countTypeLabel(rule.count)}`} className={editingPackIndex === index ? 'selected' : ''} onClick={() => setEditingPackIndex(index)} onKeyDown={(event) => handlePackTabKeyDown(event, index)} key={index}><span>{index + 1}パック目</span><small>{rule.cardCount}枚・{rule.cardsPerPick}枚・{rule.direction === 'left' ? '左' : '右'}・{countTypeLabel(rule.count)}</small></button>)}</div>
-            <div id="pack-settings-panel" className="pack-settings-panel" role="tabpanel" aria-label={`${editingPackIndex + 1}パック目の設定`}><div className="pack-panel-heading"><strong>{editingPackIndex + 1}パック目</strong><span>{draftPackRule.cardCount}枚・1回{draftPackRule.cardsPerPick}枚ピック</span></div><div className="field-row"><label className="field"><span>カード枚数</span><NumberSelect value={draftPackRule.cardCount} options={cardCountOptions} onChange={(value) => updatePackRule({ cardCount: value })} format={(value) => `${value}枚`} /></label><label className="field"><span>1ピックの獲得枚数</span><NumberSelect value={draftPackRule.cardsPerPick} options={cardsPerPickOptions} onChange={(value) => updatePackRule({ cardsPerPick: value })} format={(value) => `${value}枚`} /></label></div><section className="pack-rule-section" aria-labelledby={`direction-heading-${editingPackIndex}`}><h3 id={`direction-heading-${editingPackIndex}`}>回す方向</h3><div className="segmented compact"><button type="button" className={draftPackRule.direction === 'left' ? 'selected' : ''} aria-pressed={draftPackRule.direction === 'left'} onClick={() => updatePackRule({ direction: 'left' })}>← 左隣へ</button><button type="button" className={draftPackRule.direction === 'right' ? 'selected' : ''} aria-pressed={draftPackRule.direction === 'right'} onClick={() => updatePackRule({ direction: 'right' })}>右隣へ →</button></div></section><section className="pack-rule-section" aria-labelledby={`count-heading-${editingPackIndex}`}><h3 id={`count-heading-${editingPackIndex}`}>カウント方式</h3><CountSettingsFields rule={draftPackRule} onChange={(count) => updatePackRule({ count })} /></section></div>
+            <div className="pack-tabs" role="tablist" aria-label="設定するパック">{draftPackRules.map((rule, index) => {
+              const takeSummary = rule.takeAll ? '全取得' : `${rule.takeCount}枚取得`;
+              return <button id={`pack-tab-${index}`} type="button" role="tab" aria-selected={editingPackIndex === index} aria-controls="pack-settings-panel" tabIndex={editingPackIndex === index ? 0 : -1} aria-label={`${index + 1}パック目、${rule.cardCount}枚、1回${rule.cardsPerPick}枚、${takeSummary}、${rule.direction === 'left' ? '左' : '右'}、${countTypeLabel(rule.count)}`} className={editingPackIndex === index ? 'selected' : ''} onClick={() => setEditingPackIndex(index)} onKeyDown={(event) => handlePackTabKeyDown(event, index)} key={index}><span>{index + 1}パック目</span><small>{rule.cardCount}枚・1回{rule.cardsPerPick}枚・{takeSummary}・{rule.direction === 'left' ? '左' : '右'}・{countTypeLabel(rule.count)}</small></button>;
+            })}</div>
+            <div id="pack-settings-panel" className="pack-settings-panel" role="tabpanel" aria-label={`${editingPackIndex + 1}パック目の設定`}>
+              <div className="pack-panel-heading"><strong>{editingPackIndex + 1}パック目</strong><span>{draftPackRule.cardCount}枚・1回{draftPackRule.cardsPerPick}枚・{draftPackRule.takeAll ? '全て取得' : `合計${draftPackRule.takeCount}枚取得`}</span></div>
+              <div className="field-row"><label className="field"><span>カード枚数</span><NumberSelect value={draftPackRule.cardCount} options={cardCountOptions} onChange={updatePackCardCount} format={(value) => `${value}枚`} /></label><label className="field"><span>1ピックの獲得枚数</span><NumberSelect value={draftPackRule.cardsPerPick} options={cardsPerPickOptions} onChange={(value) => updatePackRule({ cardsPerPick: value })} format={(value) => `${value}枚`} /></label></div>
+              <TakeLimitFields cardCount={draftPackRule.cardCount} takeAll={draftPackRule.takeAll} takeCount={draftPackRule.takeCount} onChange={updatePackRule} />
+              <section className="pack-rule-section" aria-labelledby={`direction-heading-${editingPackIndex}`}><h3 id={`direction-heading-${editingPackIndex}`}>回す方向</h3><div className="segmented compact"><button type="button" className={draftPackRule.direction === 'left' ? 'selected' : ''} aria-pressed={draftPackRule.direction === 'left'} onClick={() => updatePackRule({ direction: 'left' })}>← 左隣へ</button><button type="button" className={draftPackRule.direction === 'right' ? 'selected' : ''} aria-pressed={draftPackRule.direction === 'right'} onClick={() => updatePackRule({ direction: 'right' })}>右隣へ →</button></div></section>
+              <section className="pack-rule-section" aria-labelledby={`count-heading-${editingPackIndex}`}><h3 id={`count-heading-${editingPackIndex}`}>カウント方式</h3><CountSettingsFields rule={draftPackRule} onChange={(count) => updatePackRule({ count })} /></section>
+            </div>
           </fieldset></div>
         </div>}
 

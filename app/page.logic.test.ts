@@ -88,7 +88,7 @@ describe('draft phase generation', () => {
       },
       individualInitialized: true,
       individualRules: [
-        { cardCount: 4, cardsPerPick: 1, direction: 'right', count: { type: 'fixed', seconds: 10 } },
+        { cardCount: 4, cardsPerPick: 1, takeAll: false, takeCount: 2, direction: 'right', count: { type: 'fixed', seconds: 10 } },
         { cardCount: 6, cardsPerPick: 2, direction: 'left', count: { type: 'step', baseSeconds: 0, decreaseSeconds: 3 } },
       ],
     });
@@ -98,9 +98,32 @@ describe('draft phase generation', () => {
       [4, 1, 'right'],
       [6, 2, 'left'],
     ]);
-    expect(buildSteps(runtime).filter((step) => step.kind === 'pick').map((step) => step.seconds)).toEqual([
-      10, 10, 10, 15, 9,
+    expect(runtime.packs.map((pack) => [pack.takeAll, pack.takeCount])).toEqual([
+      [false, 2],
+      [true, 5],
     ]);
+    expect(buildSteps(runtime).filter((step) => step.kind === 'pick').map((step) => step.seconds)).toEqual([
+      10, 10, 15, 9,
+    ]);
+  });
+
+  it('取得上限を個別カウントとフェイズ数へ反映する', () => {
+    const timer = sharedTimer({
+      cardCount: 10,
+      cardsPerPick: 3,
+      takeAll: false,
+      takeCount: 7,
+      countType: 'perCard',
+      perCardSeconds: [30, 20, 10],
+    });
+    const rule = compileTimer(timer).packs[0];
+
+    expect(buildPickPhasePreview(rule)).toEqual([
+      { turn: 1, label: '1〜3枚目', seconds: 30, finalCards: null },
+      { turn: 2, label: '4〜6枚目', seconds: 20, finalCards: null },
+      { turn: 3, label: '7枚目', seconds: 10, finalCards: null },
+    ]);
+    expect(buildSteps(compileTimer(timer)).some((step) => step.kind === 'last')).toBe(false);
   });
 });
 
@@ -138,6 +161,8 @@ describe('duration estimate and data normalization', () => {
     expect(normalized.common.speech.volume).toBe(0);
     expect(normalized.sharedRule.cardCount).toBe(2);
     expect(normalized.sharedRule.cardsPerPick).toBe(5);
+    expect(normalized.sharedRule.takeAll).toBe(true);
+    expect(normalized.sharedRule.takeCount).toBe(1);
     expect(normalized.sharedRule.count).toEqual({ type: 'fixed', seconds: 1 });
   });
 });

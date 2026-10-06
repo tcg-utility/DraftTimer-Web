@@ -14,6 +14,8 @@ export type CountSettings =
 export type PackRule = {
   cardCount: number;
   cardsPerPick: number;
+  takeAll: boolean;
+  takeCount: number;
   direction: Direction;
   count: CountSettings;
 };
@@ -21,6 +23,8 @@ export type PackRule = {
 export type SharedPackRule = {
   cardCount: number;
   cardsPerPick: number;
+  takeAll: boolean;
+  takeCount: number;
   directionMode: DirectionMode;
   initialDirection: Direction;
   count: CountSettings;
@@ -42,7 +46,7 @@ export type TimerCommonSettings = {
 };
 
 export type TimerSettings = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   id: string;
   mode: SettingsMode;
   common: TimerCommonSettings;
@@ -75,13 +79,15 @@ export type PickPhasePreview = {
   finalCards: number | null;
 };
 
-export const DATA_VERSION = 2;
+export const DATA_VERSION = 3;
 export const BACKUP_FORMAT = 'drafttimer-web-backup';
 export const MAX_BACKUP_BYTES = 1024 * 1024;
 export const defaultPerCard = [40, 40, 35, 30, 25, 25, 20, 20, 15, 10, 10, 5, 5, 5];
 export const defaultSharedRule: SharedPackRule = {
   cardCount: 15,
   cardsPerPick: 1,
+  takeAll: true,
+  takeCount: 14,
   directionMode: 'alternate',
   initialDirection: 'left',
   count: { type: 'perCard', seconds: [...defaultPerCard] },
@@ -153,6 +159,8 @@ export function sharedPackRule(settings: TimerSettings, pack: number): PackRule 
   return {
     cardCount: settings.sharedRule.cardCount,
     cardsPerPick: settings.sharedRule.cardsPerPick,
+    takeAll: settings.sharedRule.takeAll,
+    takeCount: settings.sharedRule.takeCount,
     direction: sharedDirectionForPack(settings.sharedRule, pack),
     count: cloneCountSettings(settings.sharedRule.count),
   };
@@ -174,8 +182,17 @@ export function compileTimer(settings: TimerSettings): RuntimeSettings {
   };
 }
 
+export function totalCardsToTake(rule: Pick<PackRule, 'cardCount' | 'takeAll' | 'takeCount'>) {
+  if (rule.takeAll) return Math.max(1, rule.cardCount);
+  return clamp(rule.takeCount, 1, Math.max(1, rule.cardCount - 1));
+}
+
 export function turnCount(rule: PackRule) {
-  return Math.max(1, Math.ceil(Math.max(1, rule.cardCount) / Math.max(1, rule.cardsPerPick)));
+  return Math.max(1, Math.ceil(totalCardsToTake(rule) / Math.max(1, rule.cardsPerPick)));
+}
+
+export function timedTurnCount(rule: PackRule) {
+  return Math.max(0, turnCount(rule) - (rule.takeAll ? 1 : 0));
 }
 
 export function remainingCards(rule: PackRule, turn: number) {
@@ -184,7 +201,7 @@ export function remainingCards(rule: PackRule, turn: number) {
 
 export function pickRange(rule: PackRule, turn: number) {
   const start = (turn - 1) * rule.cardsPerPick + 1;
-  const end = Math.min(start + rule.cardsPerPick - 1, rule.cardCount);
+  const end = Math.min(start + rule.cardsPerPick - 1, totalCardsToTake(rule));
   return start === end ? `${start}枚目` : `${start}〜${end}枚目`;
 }
 
@@ -209,7 +226,7 @@ export function buildSteps(settings: RuntimeSettings): DraftStep[] {
     for (let turn = 1; turn <= turns; turn += 1) {
       const range = pickRange(rule, turn);
       const remaining = remainingCards(rule, turn);
-      if (turn === turns) {
+      if (rule.takeAll && turn === turns) {
         const finalCards = Math.min(rule.cardsPerPick, remaining);
         result.push({ kind: 'last', pack, turn, seconds: 0, label: finalCards === 1 ? '最後のカード' : `最後の${finalCards}枚`, meta: `${range}・そのまま受け取る`, cards: finalCards });
       } else {
@@ -233,7 +250,7 @@ export function buildPickPhasePreview(rule: PackRule): PickPhasePreview[] {
   const turns = turnCount(rule);
   return Array.from({ length: turns }, (_, index) => {
     const turn = index + 1;
-    if (turn === turns) {
+    if (rule.takeAll && turn === turns) {
       return { turn, label: pickRange(rule, turn), seconds: null, finalCards: Math.min(rule.cardsPerPick, remainingCards(rule, turn)) };
     }
     return { turn, label: pickRange(rule, turn), seconds: turnSeconds(rule, turn), finalCards: null };
@@ -314,11 +331,12 @@ export function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {};
 }
 
-function normalizeCountSettings(raw: unknown, legacy: Record<string, unknown>, fallback: CountSettings, cardCount: number, cardsPerPick: number): CountSettings {
+function normalizeCountSettings(raw: unknown, legacy: Record<string, unknown>, fallback: CountSettings, cardCount: number, cardsPerPick: number, takeAll: boolean, takeCount: number): CountSettings {
   const source = asRecord(raw);
   const typeValue = source.type ?? legacy.countType ?? fallback.type;
   const type: CountType = typeValue === 'fixed' || typeValue === 'step' ? typeValue : 'perCard';
-  const timedTurnCount = Math.max(1, Math.ceil(cardCount / cardsPerPick) - 1);
+  const totalTurns = Math.max(1, Math.ceil((takeAll ? cardCount : takeCount) / cardsPerPick));
+  const normalizedTimedTurnCount = Math.max(0, totalTurns - (takeAll ? 1 : 0));
   if (type === 'fixed') {
     const fallbackSeconds = fallback.type === 'fixed' ? fallback.seconds : 40;
     return { type: 'fixed', seconds: clamp(Number(source.seconds ?? legacy.fixedSeconds ?? fallbackSeconds), 1, 3600) };
@@ -339,18 +357,22 @@ function normalizeCountSettings(raw: unknown, legacy: Record<string, unknown>, f
       : fallback.type === 'perCard'
         ? fallback.seconds
         : defaultPerCard;
-  return { type: 'perCard', seconds: Array.from({ length: timedTurnCount }, (_, index) => clamp(Number(values[index] ?? defaultPerCard[index] ?? 10), 1, 3600)) };
+  return { type: 'perCard', seconds: Array.from({ length: normalizedTimedTurnCount }, (_, index) => clamp(Number(values[index] ?? defaultPerCard[index] ?? 10), 1, 3600)) };
 }
 
 function normalizePackRule(raw: unknown, fallback: PackRule): PackRule {
   const source = asRecord(raw);
   const cardCount = clamp(Number(source.cardCount ?? fallback.cardCount), 2, 30);
   const cardsPerPick = clamp(Number(source.cardsPerPick ?? fallback.cardsPerPick), 1, 5);
+  const takeAll = typeof source.takeAll === 'boolean' ? source.takeAll : fallback.takeAll;
+  const takeCount = clamp(Number(source.takeCount ?? fallback.takeCount ?? cardCount - 1), 1, cardCount - 1);
   return {
     cardCount,
     cardsPerPick,
+    takeAll,
+    takeCount,
     direction: source.direction === 'right' ? 'right' : source.direction === 'left' ? 'left' : fallback.direction,
-    count: normalizeCountSettings(source.count, source, fallback.count, cardCount, cardsPerPick),
+    count: normalizeCountSettings(source.count, source, fallback.count, cardCount, cardsPerPick, takeAll, takeCount),
   };
 }
 
@@ -379,12 +401,17 @@ export function normalizeTimer(raw: unknown): TimerSettings {
   const sharedSource = asRecord(source.sharedRule);
   const sharedCardCount = clamp(Number(sharedSource.cardCount ?? source.cardCount ?? defaultSharedRule.cardCount), 2, 30);
   const sharedCardsPerPick = clamp(Number(sharedSource.cardsPerPick ?? source.cardsPerPick ?? defaultSharedRule.cardsPerPick), 1, 5);
+  const sharedTakeAllSource = sharedSource.takeAll ?? source.takeAll;
+  const sharedTakeAll = typeof sharedTakeAllSource === 'boolean' ? sharedTakeAllSource : defaultSharedRule.takeAll;
+  const sharedTakeCount = clamp(Number(sharedSource.takeCount ?? source.takeCount ?? sharedCardCount - 1), 1, sharedCardCount - 1);
   const sharedRule: SharedPackRule = {
     cardCount: sharedCardCount,
     cardsPerPick: sharedCardsPerPick,
+    takeAll: sharedTakeAll,
+    takeCount: sharedTakeCount,
     directionMode: sharedSource.directionMode === 'fixed' || source.directionMode === 'fixed' ? 'fixed' : 'alternate',
     initialDirection: sharedSource.initialDirection === 'right' || source.initialDirection === 'right' ? 'right' : 'left',
-    count: normalizeCountSettings(sharedSource.count, { ...source, ...sharedSource }, defaultSharedRule.count, sharedCardCount, sharedCardsPerPick),
+    count: normalizeCountSettings(sharedSource.count, { ...source, ...sharedSource }, defaultSharedRule.count, sharedCardCount, sharedCardsPerPick, sharedTakeAll, sharedTakeCount),
   };
   const mode: SettingsMode = source.mode === 'individual' || source.settingsMode === 'individual' ? 'individual' : 'shared';
   const rawRules = Array.isArray(source.individualRules) ? source.individualRules : Array.isArray(source.packRules) ? source.packRules : [];
@@ -436,5 +463,5 @@ export function countSettingsForType(type: CountType, current: CountSettings, ru
   if (type === current.type) return cloneCountSettings(current);
   if (type === 'fixed') return { type: 'fixed', seconds: 40 };
   if (type === 'step') return { type: 'step', baseSeconds: 0, decreaseSeconds: 3 };
-  return { type: 'perCard', seconds: Array.from({ length: Math.max(1, turnCount(rule) - 1) }, (_, index) => defaultPerCard[index] ?? 10) };
+  return { type: 'perCard', seconds: Array.from({ length: timedTurnCount(rule) }, (_, index) => defaultPerCard[index] ?? 10) };
 }

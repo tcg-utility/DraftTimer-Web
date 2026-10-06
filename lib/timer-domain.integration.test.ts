@@ -8,7 +8,7 @@ describe('complete phase sequence', () => {
     timer.common.packCount = 3;
     timer.common.packIntervals = [7, 9];
     timer.common.deckBuildSeconds = 11;
-    const pack = (cardCount: number, cardsPerPick: number, direction: 'left' | 'right'): PackRule => ({ cardCount, cardsPerPick, direction, count: { type: 'fixed', seconds: 2 } });
+    const pack = (cardCount: number, cardsPerPick: number, direction: 'left' | 'right'): PackRule => ({ cardCount, cardsPerPick, takeAll: true, takeCount: cardCount - 1, direction, count: { type: 'fixed', seconds: 2 } });
     timer.individualRules = [pack(5, 2, 'left'), pack(4, 1, 'right'), pack(6, 3, 'left')];
     timer.individualInitialized = true;
 
@@ -18,5 +18,28 @@ describe('complete phase sequence', () => {
     expect(steps.filter((step) => step.kind === 'pick')).toHaveLength(6);
     expect(steps.at(-2)).toMatchObject({ kind: 'deck', seconds: 11 });
     expect(steps.at(-1)?.kind).toBe('end');
+  });
+
+  it('取得枚数を制限したパックは指定枚数まで全ピックを計時する', () => {
+    const timer = cloneTimer(defaultTimer);
+    timer.common.packCount = 1;
+    timer.common.packIntervals = [];
+    timer.common.deckBuildSeconds = 0;
+    timer.sharedRule = {
+      ...timer.sharedRule,
+      cardCount: 15,
+      cardsPerPick: 2,
+      takeAll: false,
+      takeCount: 5,
+      count: { type: 'fixed', seconds: 12 },
+    };
+
+    const steps = buildSteps(compileTimer(timer));
+    expect(steps.filter((step) => step.kind === 'pick').map((step) => [step.label, step.seconds])).toEqual([
+      ['1〜2枚目（15枚残）', 12],
+      ['3〜4枚目（13枚残）', 12],
+      ['5枚目（11枚残）', 12],
+    ]);
+    expect(steps.some((step) => step.kind === 'last')).toBe(false);
   });
 });

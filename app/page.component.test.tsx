@@ -50,18 +50,47 @@ describe('settings editor', () => {
     await user.click(within(dialog).getByRole('button', { name: 'この設定を全パックへ適用' }));
 
     expect(within(dialog).getAllByRole('tab').map((tab) => tab.getAttribute('aria-label'))).toEqual([
-      '1パック目、4枚、1回1枚、右、固定',
-      '2パック目、4枚、1回1枚、右、固定',
-      '3パック目、4枚、1回1枚、右、固定',
+      '1パック目、4枚、1回1枚、全取得、右、固定',
+      '2パック目、4枚、1回1枚、全取得、右、固定',
+      '3パック目、4枚、1回1枚、全取得、右、固定',
     ]);
 
     await user.click(within(dialog).getByRole('button', { name: '全パック共通設定' }));
     await user.click(within(dialog).getByRole('button', { name: '全パック個別設定' }));
     expect(within(dialog).getAllByRole('tab').map((tab) => tab.getAttribute('aria-label'))).toEqual([
-      '1パック目、4枚、1回1枚、右、固定',
-      '2パック目、4枚、1回1枚、右、固定',
-      '3パック目、4枚、1回1枚、右、固定',
+      '1パック目、4枚、1回1枚、全取得、右、固定',
+      '2パック目、4枚、1回1枚、全取得、右、固定',
+      '3パック目、4枚、1回1枚、全取得、右、固定',
     ]);
+  });
+
+  it('取得枚数を共通設定とパック個別設定で変更できる', async () => {
+    render(<Home />);
+    const { user, dialog } = await openSettings();
+
+    const sharedTakeAll = within(dialog).getByRole('checkbox', { name: '全て取る' });
+    expect(sharedTakeAll.getAttribute('checked')).not.toBeNull();
+    expect(within(dialog).queryByRole('combobox', { name: '取得枚数' })).toBeNull();
+
+    await user.click(sharedTakeAll);
+    const sharedTakeCount = within(dialog).getByRole('combobox', { name: '取得枚数' });
+    const options = within(sharedTakeCount).getAllByRole('option');
+    expect(options[0].textContent).toBe('1枚');
+    expect(options.at(-1)?.textContent).toBe('14枚');
+    await user.selectOptions(sharedTakeCount, '5');
+    expect(within(within(dialog).getByRole('region', { name: 'ピック時間プレビュー' })).getAllByRole('listitem')).toHaveLength(5);
+
+    await user.click(within(dialog).getByRole('button', { name: '全パック個別設定' }));
+    const firstPanel = within(dialog).getByRole('tabpanel', { name: '1パック目の設定' });
+    expect(within(firstPanel).getByRole('checkbox', { name: '全て取る' }).getAttribute('checked')).toBeNull();
+    await user.selectOptions(within(firstPanel).getByRole('combobox', { name: '取得枚数' }), '3');
+    await user.click(within(dialog).getAllByRole('tab')[1]);
+    const secondPanel = within(dialog).getByRole('tabpanel', { name: '2パック目の設定' });
+    expect((within(secondPanel).getByRole('combobox', { name: '取得枚数' }) as unknown as HTMLSelectElement).value).toBe('5');
+    expect(within(dialog).getAllByRole('tab').map((tab) => tab.getAttribute('aria-label'))).toEqual(expect.arrayContaining([
+      expect.stringContaining('1パック目、15枚、1回1枚、3枚取得'),
+      expect.stringContaining('2パック目、15枚、1回1枚、5枚取得'),
+    ]));
   });
 
   it('予想所要時間は音声設定では変わらず進行設定では変わる', async () => {

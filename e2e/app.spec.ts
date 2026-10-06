@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test';
 
 const tinyTimerStore = {
-  dataVersion: 2,
+  dataVersion: 3,
   selectedId: 'e2e-timer',
   timers: [{
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: 'e2e-timer',
     mode: 'shared',
     common: {
@@ -17,6 +17,8 @@ const tinyTimerStore = {
     sharedRule: {
       cardCount: 2,
       cardsPerPick: 1,
+      takeAll: true,
+      takeCount: 1,
       directionMode: 'alternate',
       initialDirection: 'left',
       count: { type: 'fixed', seconds: 1 },
@@ -48,6 +50,26 @@ test('個別設定のパックタブを左右キーで移動できる', async ({
   await firstTab.focus();
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('tab').nth(1)).toHaveAttribute('aria-selected', 'true');
+});
+
+test('取得枚数を共通設定からパック個別設定へ引き継げる', async ({ page }) => {
+  await page.goto('./');
+  await page.getByRole('button', { name: '設定を開く' }).click();
+  const dialog = page.getByRole('dialog', { name: 'タイマー設定' });
+
+  await expect(dialog.getByRole('checkbox', { name: '全て取る' })).toBeChecked();
+  await dialog.getByRole('combobox', { name: 'カード枚数 / パック' }).selectOption('5');
+  await dialog.getByRole('checkbox', { name: '全て取る' }).uncheck();
+  await dialog.getByRole('combobox', { name: '取得枚数' }).selectOption('3');
+  await expect(dialog.getByRole('region', { name: 'ピック時間プレビュー' }).getByRole('listitem')).toHaveCount(3);
+
+  await dialog.getByRole('button', { name: '全パック個別設定' }).click();
+  const firstPanel = dialog.getByRole('tabpanel', { name: '1パック目の設定' });
+  await expect(firstPanel.getByRole('checkbox', { name: '全て取る' })).not.toBeChecked();
+  await expect(firstPanel.getByRole('combobox', { name: '取得枚数' })).toHaveValue('3');
+  await firstPanel.getByRole('combobox', { name: '取得枚数' }).selectOption('2');
+  await expect(dialog.getByRole('tab').first()).toHaveAttribute('aria-label', /2枚取得/);
+  await expect(dialog.getByRole('tab').nth(1)).toHaveAttribute('aria-label', /3枚取得/);
 });
 
 test('進行中の下段フェイズ操作は長押しで確定する', async ({ page }) => {

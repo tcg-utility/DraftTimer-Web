@@ -20,7 +20,7 @@ describe('settings storage', () => {
     }));
     const saved = readSettings();
     expect(saved?.selectedId).toBe('legacy');
-    expect(saved?.timers[0]).toMatchObject({ schemaVersion: 2, common: { name: '旧タイマー', packCount: 2 }, sharedRule: { cardCount: 16, cardsPerPick: 2, count: { type: 'fixed', seconds: 20 } } });
+    expect(saved?.timers[0]).toMatchObject({ schemaVersion: 3, common: { name: '旧タイマー', packCount: 2 }, sharedRule: { cardCount: 16, cardsPerPick: 2, takeAll: true, takeCount: 15, count: { type: 'fixed', seconds: 20 } } });
   });
 
   it('保存領域が利用できない場合は例外にせず結果で通知する', () => {
